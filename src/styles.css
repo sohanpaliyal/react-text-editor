@@ -1,52 +1,198 @@
+/* ----------------------------- */
+/* 🔹 Normalization / Reset CSS  */
+/* ----------------------------- */
+
+/* Use a better box model */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Remove default margins */
+body, h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd {
+  margin: 0;
+}
+
+/* Remove list styles on ul, ol elements */
+ul, ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Reset anchor styles */
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Reset button styles */
+button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Images: responsive by default */
+img {
+  max-width: 100%;
+  display: block;
+}
+
+/* Inherit fonts for inputs and buttons */
+input, button, textarea, select {
+  font: inherit;
+}
+
+/* Set a consistent base line-height and font */
+html {
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%; /* Prevent iOS zooming */
+}
+
+body {
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 15px;
+  background: #fff;
+  color: #333;
+}
+
+/* ----------------------------- */
+/* 🔹 Editor-Specific CSS        */
+/* ----------------------------- */
+
 [contenteditable]:empty:before {
-    content: attr(data-placeholder);
-    color: grey;
-  }
-  .bold {
-    font-weight: bold;
-  }
-  .italic {
-    font-style: italic;
-  }
-  .underline {
-    text-decoration: underline;
-  }
-  .editor-ul,
-  .editor-ol {
-    margin: 0 0 0 20px;
-    padding: 0;
-  }
-  .editor-listitem {
-    margin: 5px 0;
-  }
-  .editor-code {
-    background: #f5f5f5;
-    border-radius: 4px;
-    padding: 8px;
-    font-family: monospace;
-    display: block;
-  }
-  .editor-tokenAttr {
-    color: #d73a49;
-  }
-  .editor-tokenProperty {
-    color: #005cc5;
-  }
-  .editor-tokenSelector {
-    color: #22863a;
-  }
-  .editor-tokenFunction {
-    color: #6f42c1;
-  }
-  .editor-tokenComment {
-    color: #6a737d;
-  }
-  .editor-tokenOperator {
-    color: #d73a49;
-  }
-  .editor-tokenVariable {
-    color: #e36209;
-  }
-  .editor-tokenPunctuation {
-    color: #24292e;
-  }
+  content: attr(data-placeholder);
+  color: grey;
+}
+
+.bold {
+  font-weight: bold;
+}
+
+.italic {
+  font-style: italic;
+}
+
+.underline {
+  text-decoration: underline;
+}
+
+.editor-ul,
+.editor-ol {
+  margin: 0 0 0 20px;
+  padding: 0;
+}
+
+.editor-listitem {
+  margin: 5px 0;
+}
+
+.editor-code {
+  background: #f5f5f5;
+  border-radius: 4px;
+  padding: 8px;
+  font-family: monospace;
+  display: block;
+}
+
+/* Syntax highlighting */
+.editor-tokenAttr {
+  color: #d73a49;
+}
+.editor-tokenProperty {
+  color: #005cc5;
+}
+.editor-tokenSelector {
+  color: #22863a;
+}
+.editor-tokenFunction {
+  color: #6f42c1;
+}
+.editor-tokenComment {
+  color: #6a737d;
+}
+.editor-tokenOperator {
+  color: #d73a49;
+}
+.editor-tokenVariable {
+  color: #e36209;
+}
+.editor-tokenPunctuation {
+  color: #24292e;
+}
+
+/* Wrapper */
+.custom-editor {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  font-family: 'Segoe UI', sans-serif;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  position: relative; /* needed for placeholder positioning */
+}
+
+/* Toolbar */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 6px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #ddd;
+  gap: 6px;
+}
+
+/* Buttons */
+.editor-btn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 4px;
+  background: #e9ecef;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.editor-btn:hover {
+  background: #dee2e6;
+}
+
+.editor-btn.active {
+  background: #555;
+  color: #fff;
+}
+
+.editor-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Editor area */
+.editor-content {
+  padding: 12px;
+  min-height: 120px;
+  outline: none;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.editor-content:focus {
+  background: #fdfdfd;
+}
+
+/* Placeholder */
+.editor-placeholder {
+  position: absolute;
+  pointer-events: none;
+  color: #999;
+  padding: 12px;
+  font-size: 15px;
+  top: 43px;
+  left: 2px;
+}

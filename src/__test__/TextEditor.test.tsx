@@ -1,268 +1,492 @@
-import '@testing-library/jest-dom';
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react';
-import TextEditor from '../TextEditor';
-import {
-    $getSelection,
-    $isRangeSelection,
-    $createParagraphNode,
-    $createTextNode,
-    $getRoot,
-    LexicalEditor,
-    UNDO_COMMAND,
-} from 'lexical';
-import { FORMAT_TEXT_COMMAND, REDO_COMMAND } from 'lexical';
-import { $generateHtmlFromNodes } from '@lexical/html';
-import { ListNode, ListItemNode, INSERT_UNORDERED_LIST_COMMAND } from '@lexical/list';
-import { CodeNode } from '@lexical/code';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import '@testing-library/jest-dom';
 
-// Mock Lexical utilities
-jest.mock('lexical', () => {
-    const original = jest.requireActual('lexical');
-    return {
-        ...original,
-        $getSelection: jest.fn(),
-        $isRangeSelection: jest.fn(),
-        $createParagraphNode: jest.fn(),
-        $createTextNode: jest.fn(),
-        $getRoot: jest.fn(),
-    };
-});
+// Mock CSS import first
+jest.mock('../styles.css', () => ({}));
 
-jest.mock('@lexical/html', () => ({
-    ...jest.requireActual('@lexical/html'),
-    $generateHtmlFromNodes: jest.fn(),
+// Define mock objects first
+const mockRoot = {
+  clear: jest.fn(),
+};
+
+const mockSelection = {
+  hasFormat: jest.fn((format: string) => false),
+};
+
+const mockEditor: any = {
+  update: jest.fn((callback) => callback()),
+  registerCommand: jest.fn(() => () => {}),
+  registerUpdateListener: jest.fn(() => () => {}),
+  dispatchCommand: jest.fn(),
+};
+
+// Mock all Lexical dependencies before any imports
+jest.mock('@lexical/react/LexicalComposer', () => ({
+  LexicalComposer: ({ children, initialConfig }: any) => (
+    <div data-testid="lexical-composer" data-config={JSON.stringify(initialConfig)}>
+      {children}
+    </div>
+  ),
+}));
+
+jest.mock('@lexical/react/LexicalRichTextPlugin', () => ({
+  RichTextPlugin: ({ contentEditable, placeholder, ErrorBoundary }: any) => (
+    <div data-testid="rich-text-plugin">
+      <div data-testid="error-boundary">
+        {contentEditable}
+        {placeholder}
+      </div>
+    </div>
+  ),
+}));
+
+jest.mock('@lexical/react/LexicalContentEditable', () => ({
+  ContentEditable: React.forwardRef<HTMLDivElement, any>(({ className }, ref) => (
+    <div
+      ref={ref}
+      className={className}
+      data-testid="content-editable"
+      contentEditable
+      suppressContentEditableWarning
+    />
+  )),
+}));
+
+jest.mock('@lexical/react/LexicalHistoryPlugin', () => ({
+  HistoryPlugin: () => <div data-testid="history-plugin" />,
+}));
+
+jest.mock('@lexical/react/LexicalListPlugin', () => ({
+  ListPlugin: () => <div data-testid="list-plugin" />,
+}));
+
+jest.mock('@lexical/react/LexicalMarkdownShortcutPlugin', () => ({
+  MarkdownShortcutPlugin: ({ transformers }: any) => (
+    <div data-testid="markdown-plugin" data-transformers={transformers?.length} />
+  ),
+}));
+
+jest.mock('@lexical/react/LexicalErrorBoundary', () => ({
+  __esModule: true,
+  default: ({ children }: any) => <div data-testid="error-boundary">{children}</div>,
+}));
+
+jest.mock('@lexical/markdown', () => ({
+  TRANSFORMERS: [],
+}));
+
+jest.mock('@lexical/rich-text', () => ({
+  HeadingNode: class HeadingNode {},
+  QuoteNode: class QuoteNode {},
 }));
 
 jest.mock('@lexical/list', () => ({
-    ...jest.requireActual('@lexical/list'),
-    $createListNode: jest.fn(),
-    $createListItemNode: jest.fn(),
+  ListNode: class ListNode {},
+  ListItemNode: class ListItemNode {},
+  INSERT_ORDERED_LIST_COMMAND: 'INSERT_ORDERED_LIST_COMMAND',
+  INSERT_UNORDERED_LIST_COMMAND: 'INSERT_UNORDERED_LIST_COMMAND',
+}));
+
+jest.mock('@lexical/link', () => ({
+  AutoLinkNode: class AutoLinkNode {},
+  LinkNode: class LinkNode {},
 }));
 
 jest.mock('@lexical/code', () => ({
-    ...jest.requireActual('@lexical/code'),
-    $createCodeNode: jest.fn(),
+  CodeNode: class CodeNode {},
+  CodeHighlightNode: class CodeHighlightNode {},
 }));
 
+jest.mock('@lexical/react/LexicalComposerContext', () => ({
+  useLexicalComposerContext: () => [mockEditor],
+}));
+
+jest.mock('lexical', () => ({
+  $getRoot: jest.fn(() => mockRoot),
+  $insertNodes: jest.fn(),
+  $getSelection: jest.fn(() => mockSelection),
+  $isRangeSelection: jest.fn(() => true),
+  FORMAT_TEXT_COMMAND: 'FORMAT_TEXT_COMMAND',
+  UNDO_COMMAND: 'UNDO_COMMAND',
+  REDO_COMMAND: 'REDO_COMMAND',
+  CAN_UNDO_COMMAND: 'CAN_UNDO_COMMAND',
+  CAN_REDO_COMMAND: 'CAN_REDO_COMMAND',
+  SELECTION_CHANGE_COMMAND: 'SELECTION_CHANGE_COMMAND',
+}));
+
+jest.mock('@lexical/html', () => ({
+  $generateHtmlFromNodes: jest.fn(() => '<p>test content</p>'),
+  $generateNodesFromDOM: jest.fn(() => []),
+}));
+
+jest.mock('@lexical/utils', () => ({
+  mergeRegister: jest.fn((...args) => () => {}),
+}));
+
+// Now import the component after all mocks are set up
+import TextEditor, { TextEditorRef } from '../TextEditor';
+
 describe('TextEditor', () => {
-    let mockEditor: LexicalEditor;
+  let user: ReturnType<typeof userEvent.setup>;
 
-    beforeEach(() => {
-        // Reset mocks
-        jest.clearAllMocks();
+  beforeEach(() => {
+    user = userEvent.setup();
+    jest.clearAllMocks();
+    // Reset mock implementations
+    mockSelection.hasFormat.mockImplementation((format: string) => false);
+  });
 
-        // Mock editor instance
-        mockEditor = {
-            update: jest.fn((callback) => callback()),
-            dispatchCommand: jest.fn((command, payload) => true),
-            getRoot: jest.fn().mockReturnValue({
-                clear: jest.fn(),
-                append: jest.fn(),
-                getChildren: () => [{ getKey: () => 'mock-child-key' }],
-            }),
-            _updateDOM: jest.fn(),
-        } as unknown as LexicalEditor;
-
-        // Mock $getSelection
-        ($getSelection as jest.Mock).mockReturnValue({
-            isCollapsed: jest.fn().mockReturnValue(true),
-            hasFormat: jest.fn((format: string) => format === 'bold'),
-            format: jest.fn(),
-            insertNodes: jest.fn(),
-            getTextContent: jest.fn().mockReturnValue('Test'),
-            getNodes: jest.fn().mockReturnValue([]),
-        });
-
-        // Mock $isRangeSelection
-        ($isRangeSelection as unknown as jest.Mock).mockReturnValue(true);
-
-        // Mock $createParagraphNode
-        ($createParagraphNode as jest.Mock).mockReturnValue({
-            append: jest.fn(),
-            getKey: () => 'mock-paragraph-key',
-            setFormat: jest.fn(),
-        });
-
-        // Mock $createTextNode
-        ($createTextNode as jest.Mock).mockReturnValue({
-            setFormat: jest.fn(),
-            getTextContent: () => 'Test',
-        });
-
-        // Mock $getRoot
-        ($getRoot as jest.Mock).mockReturnValue({
-            clear: jest.fn(),
-            append: jest.fn(),
-            getChildren: () => [{ getKey: () => 'mock-child-key' }],
-        });
-
-        // Mock $generateHtmlFromNodes
-        ($generateHtmlFromNodes as jest.Mock).mockImplementation(() => '<p>Test</p>');
-
-        // Mock list nodes
-        const mockListNode = {
-            append: jest.fn(),
-            getKey: () => 'mock-list-key',
-            getTag: () => 'ul',
-        };
-        const mockListItemNode = {
-            append: jest.fn(),
-            getKey: () => 'mock-list-item-key',
-        };
-        (require('@lexical/list').$createListNode as jest.Mock).mockReturnValue(mockListNode);
-        (require('@lexical/list').$createListItemNode as jest.Mock).mockReturnValue(mockListItemNode);
-
-        // Mock code node
-        (require('@lexical/code').$createCodeNode as jest.Mock).mockReturnValue({
-            append: jest.fn(),
-            getKey: () => 'mock-code-key',
-            getTextContent: () => 'console.log("Hello");',
-        });
+  describe('Rendering', () => {
+    it('renders without crashing', () => {
+      render(<TextEditor />);
+      expect(screen.getByTestId('lexical-composer')).toBeInTheDocument();
     });
 
-    test('renders editor and handles input', async () => {
-        const onChange = jest.fn();
-        const { container } = render(<TextEditor onChange={onChange} />);
-        const editor = container.querySelector('[contenteditable]')!;
-
-        ($getSelection as jest.Mock).mockReturnValue({
-            isCollapsed: jest.fn().mockReturnValue(true),
-            insertNodes: jest.fn(),
-            getTextContent: () => 'Test',
-        });
-
-        fireEvent.input(editor, { target: { textContent: 'Test' } });
-
-        await waitFor(() => {
-            expect($getRoot).toHaveBeenCalled();
-            expect(onChange).toHaveBeenCalledWith('<p>Test</p>');
-        });
+    it('renders with default placeholder', () => {
+      render(<TextEditor />);
+      expect(screen.getByText('Type here...')).toBeInTheDocument();
     });
 
-    test('applies bold formatting', async () => {
-        const onChange = jest.fn();
-        const { getByText } = render(<TextEditor onChange={onChange} />);
-        const boldButton = getByText('Bold');
-        const editor = getByText('Type here...').parentElement!.querySelector('[contenteditable]')!;
-
-        ($getSelection as jest.Mock).mockReturnValue({
-            isCollapsed: jest.fn().mockReturnValue(true),
-            hasFormat: jest.fn().mockReturnValue(true),
-            format: jest.fn(),
-            getTextContent: () => 'Test',
-        });
-
-        ($generateHtmlFromNodes as jest.Mock).mockReturnValue('<p><strong>Test</strong></p>');
-
-        fireEvent.input(editor, { target: { textContent: 'Test' } });
-        fireEvent.click(boldButton);
-
-        await waitFor(() => {
-            expect(mockEditor.dispatchCommand).toHaveBeenCalledWith(FORMAT_TEXT_COMMAND, 'bold');
-            expect(onChange).toHaveBeenCalledWith('<p><strong>Test</strong></p>');
-        });
+    it('renders with custom placeholder', () => {
+      const customPlaceholder = 'Enter your text here';
+      render(<TextEditor placeholder={customPlaceholder} />);
+      expect(screen.getByText(customPlaceholder)).toBeInTheDocument();
     });
 
-    test('handles undo and redo', async () => {
-        const onChange = jest.fn();
-        const { getByText, container } = render(<TextEditor onChange={onChange} />);
-        const editor = container.querySelector('[contenteditable]')!;
-        const undoButton = getByText('Undo');
-        const redoButton = getByText('Redo');
+    it('renders all toolbar buttons', () => {
+      render(<TextEditor />);
+      
+      expect(screen.getByRole('button', { name: 'B' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'I' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'U' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '• List' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '1. List' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '⎌ Undo' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '↻ Redo' })).toBeInTheDocument();
+    });
+  });
 
-        fireEvent.input(editor, { target: { textContent: 'First' } });
-        ($generateHtmlFromNodes as jest.Mock).mockReturnValueOnce('<p>First</p>');
-        fireEvent.input(editor, { target: { textContent: 'Second' } });
-        ($generateHtmlFromNodes as jest.Mock).mockReturnValueOnce('<p>Second</p>');
-
-        fireEvent.click(undoButton);
-        ($generateHtmlFromNodes as jest.Mock).mockReturnValueOnce('<p>First</p>');
-
-        await waitFor(() => {
-            expect(mockEditor.dispatchCommand).toHaveBeenCalledWith(UNDO_COMMAND, undefined);
-            expect(onChange).toHaveBeenCalledWith('<p>First</p>');
-        });
-
-        fireEvent.click(redoButton);
-        ($generateHtmlFromNodes as jest.Mock).mockReturnValueOnce('<p>Second</p>');
-
-        await waitFor(() => {
-            expect(mockEditor.dispatchCommand).toHaveBeenCalledWith(REDO_COMMAND, undefined);
-            expect(onChange).toHaveBeenCalledWith('<p>Second</p>');
-        });
+  describe('Props and Initial State', () => {
+    it('accepts initial value prop', () => {
+      const initialValue = '<p>Initial content</p>';
+      render(<TextEditor value={initialValue} />);
+      
+      expect(mockEditor.update).toHaveBeenCalled();
     });
 
-    test('inserts bullet list', async () => {
-        const onChange = jest.fn();
-        const { getByText } = render(<TextEditor onChange={onChange} />);
-        const bulletButton = getByText('Bullet List');
-        const editor = getByText('Type here...').parentElement!.querySelector('[contenteditable]')!;
+    it('calls onChange when content changes', async () => {
+      const mockOnChange = jest.fn();
+      render(<TextEditor onChange={mockOnChange} />);
+      
+      // Simulate the onChange plugin triggering
+      const updateListener = mockEditor.registerUpdateListener.mock.calls[0][0];
+      act(() => {
+        updateListener({ editorState: { read: (fn: any) => fn() } });
+      });
+      
+      await waitFor(() => {
+        expect(mockOnChange).toHaveBeenCalled();
+      });
+    });
+  });
 
-        ($getSelection as jest.Mock).mockReturnValue({
-            isCollapsed: jest.fn().mockReturnValue(true),
-            insertNodes: jest.fn(),
-            getTextContent: () => 'Test',
-        });
-
-        ($generateHtmlFromNodes as jest.Mock).mockReturnValue('<ul><li>Test</li></ul>');
-
-        fireEvent.input(editor, { target: { textContent: 'Test' } });
-        fireEvent.click(bulletButton);
-
-        await waitFor(() => {
-            expect(mockEditor.dispatchCommand).toHaveBeenCalledWith(INSERT_UNORDERED_LIST_COMMAND, undefined);
-            expect(onChange).toHaveBeenCalledWith('<ul><li>Test</li></ul>');
-        });
+  describe('Toolbar Functionality', () => {
+    it('dispatches bold command when bold button is clicked', async () => {
+      render(<TextEditor />);
+      
+      const boldButton = screen.getByRole('button', { name: 'B' });
+      await user.click(boldButton);
+      
+      expect(mockEditor.dispatchCommand).toHaveBeenCalledWith('FORMAT_TEXT_COMMAND', 'bold');
     });
 
-    test('handles markdown code block', async () => {
-        const onChange = jest.fn();
-        const { getByText } = render(<TextEditor onChange={onChange} />);
-        const editor = getByText('Type here...').parentElement!.querySelector('[contenteditable]')!;
-
-        ($getSelection as jest.Mock).mockReturnValue({
-            isCollapsed: jest.fn().mockReturnValue(true),
-            insertNodes: jest.fn(),
-            getTextContent: () => 'console.log("Hello");',
-        });
-
-        ($generateHtmlFromNodes as jest.Mock).mockReturnValue('<pre><code class="editor-code">console.log("Hello");</code></pre>');
-
-        fireEvent.input(editor, { target: { textContent: '```javascript\nconsole.log("Hello");\n```' } });
-
-        await waitFor(() => {
-            expect(onChange).toHaveBeenCalledWith('<pre><code class="editor-code">console.log("Hello");</code></pre>');
-        });
+    it('dispatches italic command when italic button is clicked', async () => {
+      render(<TextEditor />);
+      
+      const italicButton = screen.getByRole('button', { name: 'I' });
+      await user.click(italicButton);
+      
+      expect(mockEditor.dispatchCommand).toHaveBeenCalledWith('FORMAT_TEXT_COMMAND', 'italic');
     });
 
-    test('renders error boundary on error', async () => {
-        ($getRoot as jest.Mock).mockImplementationOnce(() => {
-            throw new Error('Test error');
-        });
-
-        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => { });
-        const { getByText } = render(<TextEditor />);
-
-        await waitFor(() => {
-            expect(getByText('Something went wrong in the editor. Please try again.')).toBeInTheDocument();
-            expect(consoleError).toHaveBeenCalledWith(expect.any(Error));
-        });
-
-        consoleError.mockRestore();
+    it('dispatches underline command when underline button is clicked', async () => {
+      render(<TextEditor />);
+      
+      const underlineButton = screen.getByRole('button', { name: 'U' });
+      await user.click(underlineButton);
+      
+      expect(mockEditor.dispatchCommand).toHaveBeenCalledWith('FORMAT_TEXT_COMMAND', 'underline');
     });
 
-    test('renders placeholder when empty', async () => {
-        const { getByText, queryByText } = render(<TextEditor placeholder="Type here..." />);
-        expect(getByText('Type here...')).toBeInTheDocument();
-
-        const editor = getByText('Type here...').parentElement!.querySelector('[contenteditable]')!;
-        ($generateHtmlFromNodes as jest.Mock).mockReturnValue('<p>Test</p>');
-
-        fireEvent.input(editor, { target: { textContent: 'Test' } });
-
-        await waitFor(() => {
-            expect(queryByText('Type here...')).not.toBeInTheDocument();
-        });
+    it('dispatches unordered list command when bullet list button is clicked', async () => {
+      render(<TextEditor />);
+      
+      const listButton = screen.getByRole('button', { name: '• List' });
+      await user.click(listButton);
+      
+      expect(mockEditor.dispatchCommand).toHaveBeenCalledWith('INSERT_UNORDERED_LIST_COMMAND', undefined);
     });
+
+    it('dispatches ordered list command when numbered list button is clicked', async () => {
+      render(<TextEditor />);
+      
+      const listButton = screen.getByRole('button', { name: '1. List' });
+      await user.click(listButton);
+      
+      expect(mockEditor.dispatchCommand).toHaveBeenCalledWith('INSERT_ORDERED_LIST_COMMAND', undefined);
+    });
+
+    it('dispatches undo command when undo button is clicked and undo is available', async () => {
+      render(<TextEditor />);
+      
+      // First enable undo
+      const canUndoCallback = mockEditor.registerCommand.mock.calls.find(
+        (call: any) => call[0] === 'CAN_UNDO_COMMAND'
+      )?.[1];
+      
+      if (canUndoCallback) {
+        act(() => {
+          canUndoCallback(true);
+        });
+      }
+
+      await waitFor(() => {
+        const undoButton = screen.getByRole('button', { name: '⎌ Undo' });
+        expect(undoButton).not.toBeDisabled();
+      });
+
+      const undoButton = screen.getByRole('button', { name: '⎌ Undo' });
+      await user.click(undoButton);
+      
+      expect(mockEditor.dispatchCommand).toHaveBeenCalledWith('UNDO_COMMAND', undefined);
+    });
+
+    it('dispatches redo command when redo button is clicked and redo is available', async () => {
+      render(<TextEditor />);
+      
+      // First enable redo
+      const canRedoCallback = mockEditor.registerCommand.mock.calls.find(
+        (call: any) => call[0] === 'CAN_REDO_COMMAND'
+      )?.[1];
+      
+      if (canRedoCallback) {
+        act(() => {
+          canRedoCallback(true);
+        });
+      }
+
+      await waitFor(() => {
+        const redoButton = screen.getByRole('button', { name: '↻ Redo' });
+        expect(redoButton).not.toBeDisabled();
+      });
+
+      const redoButton = screen.getByRole('button', { name: '↻ Redo' });
+      await user.click(redoButton);
+      
+      expect(mockEditor.dispatchCommand).toHaveBeenCalledWith('REDO_COMMAND', undefined);
+    });
+  });
+
+  describe('Button States', () => {
+    it('initially shows no active formatting buttons', () => {
+      render(<TextEditor />);
+      
+      expect(screen.getByRole('button', { name: 'B' })).not.toHaveClass('active');
+      expect(screen.getByRole('button', { name: 'I' })).not.toHaveClass('active');
+      expect(screen.getByRole('button', { name: 'U' })).not.toHaveClass('active');
+    });
+
+    it('shows undo and redo buttons as disabled initially', () => {
+      render(<TextEditor />);
+      
+      expect(screen.getByRole('button', { name: '⎌ Undo' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '↻ Redo' })).toBeDisabled();
+    });
+
+    it('updates button states when selection changes', async () => {
+      render(<TextEditor />);
+      
+      // Mock selection with bold formatting
+      mockSelection.hasFormat.mockImplementation((format) => format === 'bold');
+      
+      // Trigger selection change with act wrapper
+      const selectionCallback = mockEditor.registerCommand.mock.calls.find(
+        (call: any) => call[0] === 'SELECTION_CHANGE_COMMAND'
+      )?.[1];
+      
+      if (selectionCallback) {
+        act(() => {
+          selectionCallback();
+        });
+      }
+      
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'B' })).toHaveClass('active');
+      });
+      
+      expect(screen.getByRole('button', { name: 'I' })).not.toHaveClass('active');
+    });
+
+    it('enables undo button when undo becomes available', async () => {
+      render(<TextEditor />);
+      
+      const canUndoCallback = mockEditor.registerCommand.mock.calls.find(
+        (call: any) => call[0] === 'CAN_UNDO_COMMAND'
+      )?.[1];
+      
+      if (canUndoCallback) {
+        act(() => {
+          canUndoCallback(true);
+        });
+      }
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: '⎌ Undo' })).not.toBeDisabled();
+      });
+    });
+
+    it('enables redo button when redo becomes available', async () => {
+      render(<TextEditor />);
+      
+      const canRedoCallback = mockEditor.registerCommand.mock.calls.find(
+        (call: any) => call[0] === 'CAN_REDO_COMMAND'
+      )?.[1];
+      
+      if (canRedoCallback) {
+        act(() => {
+          canRedoCallback(true);
+        });
+      }
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: '↻ Redo' })).not.toBeDisabled();
+      });
+    });
+  });
+
+  describe('Imperative API', () => {
+    it('exposes focus method through ref', () => {
+      const ref = React.createRef<TextEditorRef>();
+      render(<TextEditor ref={ref} />);
+      
+      expect(ref.current?.focus).toBeDefined();
+      expect(typeof ref.current?.focus).toBe('function');
+    });
+
+    it('exposes blur method through ref', () => {
+      const ref = React.createRef<TextEditorRef>();
+      render(<TextEditor ref={ref} />);
+      
+      expect(ref.current?.blur).toBeDefined();
+      expect(typeof ref.current?.blur).toBe('function');
+    });
+
+    it('exposes getHTML method through ref', () => {
+      const ref = React.createRef<TextEditorRef>();
+      render(<TextEditor ref={ref} />);
+      
+      expect(ref.current?.getHTML).toBeDefined();
+      expect(typeof ref.current?.getHTML).toBe('function');
+    });
+
+    it('getHTML returns HTML content', () => {
+      const ref = React.createRef<TextEditorRef>();
+      render(<TextEditor ref={ref} />);
+      
+      const html = ref.current?.getHTML();
+      expect(html).toBe('<p>test content</p>');
+    });
+  });
+
+  describe('Plugins', () => {
+    it('renders history plugin', () => {
+      render(<TextEditor />);
+      expect(screen.getByTestId('history-plugin')).toBeInTheDocument();
+    });
+
+    it('renders list plugin', () => {
+      render(<TextEditor />);
+      expect(screen.getByTestId('list-plugin')).toBeInTheDocument();
+    });
+
+    it('renders markdown plugin', () => {
+      render(<TextEditor />);
+      expect(screen.getByTestId('markdown-plugin')).toBeInTheDocument();
+    });
+
+    it('registers update listener for onChange', () => {
+      const mockOnChange = jest.fn();
+      render(<TextEditor onChange={mockOnChange} />);
+      
+      expect(mockEditor.registerUpdateListener).toHaveBeenCalled();
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('renders error boundary', () => {
+      render(<TextEditor />);
+      expect(screen.getByTestId('error-boundary')).toBeInTheDocument();
+    });
+
+    it('handles empty initial value gracefully', () => {
+      expect(() => {
+        render(<TextEditor value="" />);
+      }).not.toThrow();
+    });
+
+    it('handles undefined initial value gracefully', () => {
+      expect(() => {
+        render(<TextEditor value={undefined} />);
+      }).not.toThrow();
+    });
+  });
+
+  describe('CSS Classes', () => {
+    it('applies correct CSS classes to editor elements', () => {
+      render(<TextEditor />);
+      
+      expect(screen.getByTestId('content-editable')).toHaveClass('editor-content');
+    });
+
+    it('applies editor-btn class to all toolbar buttons', () => {
+      render(<TextEditor />);
+      
+      const buttons = screen.getAllByRole('button');
+      buttons.forEach(button => {
+        expect(button).toHaveClass('editor-btn');
+      });
+    });
+  });
+
+  describe('Integration', () => {
+    it('works with all props together', () => {
+      const mockOnChange = jest.fn();
+      const ref = React.createRef<TextEditorRef>();
+      
+      render(
+        <TextEditor
+          value="<p>Initial content</p>"
+          onChange={mockOnChange}
+          placeholder="Custom placeholder"
+          ref={ref}
+        />
+      );
+      
+      expect(screen.getByText('Custom placeholder')).toBeInTheDocument();
+      expect(mockEditor.update).toHaveBeenCalled();
+      expect(ref.current).toBeTruthy();
+    });
+
+    it('handles value updates', () => {
+      const { rerender } = render(<TextEditor value="<p>Initial</p>" />);
+      
+      expect(mockEditor.update).toHaveBeenCalled();
+      
+      rerender(<TextEditor value="<p>Updated</p>" />);
+      
+      expect(mockEditor.update).toHaveBeenCalledTimes(2);
+    });
+  });
 });

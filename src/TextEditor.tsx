@@ -147,48 +147,56 @@ const EditorContent = forwardRef<TextEditorRef, TextEditorProps>(({ value = '', 
     }));
 
     return (
-        <div style={{ border: '1px solid #ccc', borderRadius: '4px' }}>
-            <div style={{ padding: '5px', borderBottom: '1px solid #ccc' }}>
+        <div className="custom-editor">
+            <div className="editor-toolbar">
                 <button
                     onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')}
-                    style={{ fontWeight: isBold ? 'bold' : 'normal', marginRight: '5px' }}
+                    className={`editor-btn ${isBold ? 'active' : ''}`}
                 >
-                    Bold
+                    B
                 </button>
                 <button
                     onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')}
-                    style={{ fontStyle: isItalic ? 'italic' : 'normal', marginRight: '5px' }}
+                    className={`editor-btn ${isItalic ? 'active' : ''}`}
                 >
-                    Italic
+                    I
                 </button>
                 <button
                     onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')}
-                    style={{ textDecoration: isUnderline ? 'underline' : 'none', marginRight: '5px' }}
+                    className={`editor-btn ${isUnderline ? 'active' : ''}`}
                 >
-                    Underline
+                    U
                 </button>
                 <button
                     onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}
-                    style={{ marginRight: '5px' }}
+                    className="editor-btn"
                 >
-                    Bullet List
+                    • List
                 </button>
                 <button
                     onClick={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)}
-                    style={{ marginRight: '5px' }}
+                    className="editor-btn"
                 >
-                    Numbered List
+                    1. List
                 </button>
-                <button disabled={!canUndo} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}>
-                    Undo
+                <button
+                    disabled={!canUndo}
+                    onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}
+                    className="editor-btn"
+                >
+                    ⎌ Undo
                 </button>
-                <button disabled={!canRedo} onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)}>
-                    Redo
+                <button
+                    disabled={!canRedo}
+                    onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)}
+                    className="editor-btn"
+                >
+                    ↻ Redo
                 </button>
             </div>
             <RichTextPlugin
-                contentEditable={<ContentEditable ref={editorRef} style={{ padding: '10px', minHeight: '100px', outline: 'none' }} />}
-                placeholder={<div style={{ color: 'grey', position: 'absolute', top: '75px', left: '30px', pointerEvents: 'none' }}>{placeholder}</div>}
+                contentEditable={<ContentEditable ref={editorRef} className="editor-content" />}
+                placeholder={<div className="editor-placeholder">{placeholder}</div>}
                 ErrorBoundary={LexicalErrorBoundary}
             />
             <HistoryPlugin />
